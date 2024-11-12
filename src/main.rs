@@ -1,8 +1,15 @@
-use std::process::Command;
+//! Based on the sov labs tracer, this will just make available some rust library types
+//! that will aid in estimating bonsol zk risc0 program execution cost, though I'd like
+//! for it to be more generic than that and be usable for more scenarios...
+
+// TODO: add better error handling
+// TODO: make a macro for constructing the list of instructions and their cycle count
+
 use std::str;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs::read_to_string;
+
 use prettytable::{Table, Row, Cell, format};
 use textwrap::wrap;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -11,6 +18,7 @@ use rustc_demangle::demangle;
 use regex::Regex;
 use clap::Parser;
 
+// TODO: Put this in its own mod
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -55,6 +63,12 @@ fn strip_hash(name_with_hash: &str) -> String {
 }
 
 fn get_cycle_count(insn: &str) -> Result<usize, &'static str> {
+    // TODO: This no lonnger exists... Probably would be better off as a macro since this
+    // could also change in the future and we will just want to always have whatever instructions
+    // are available at some version.
+    // This seems to be where these opcodes are declared now, at least at the version bonsol is using...
+    // https://github.com/anagrambuild/risc0/blob/189829d0b84d57e8928a85aa4fac60dd6ce45ea9/risc0/circuit/rv32im/src/prove/emu/rv32im.rs
+    //
     // The opcodes and their cycle counts are taken from
     // https://github.com/risc0/risc0/blob/main/risc0/zkvm/src/host/server/opcode.rs
     match insn {
@@ -74,6 +88,7 @@ fn get_cycle_count(insn: &str) -> Result<usize, &'static str> {
     }
 }
 
+// TODO: make this an option, not the default.
 fn print_intruction_counts(first_header: &str,
                            count_vec: Vec<(String, usize)>,
                            top_n: usize,
@@ -131,37 +146,6 @@ fn focused_stack_counts(function_stack: &[String],
     }
 }
 
-fn _build_radare2_lookups(
-    start_lookup: &mut HashMap<u64, String>,
-    end_lookup: &mut HashMap<u64, String>,
-    func_range_lookup: &mut HashMap<String, (u64, u64)>,
-    elf_name: &str
-) -> std::io::Result<()>  {
-    let output = Command::new("r2")
-        .arg("-q")
-        .arg("-c")
-        .arg("aa;afl")
-        .arg(elf_name)
-        .output()?;
-
-    if output.status.success() {
-        let result_str = str::from_utf8(&output.stdout).unwrap();
-        for line in result_str.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            let address = u64::from_str_radix(&parts[0][2..], 16).unwrap();
-            let size = parts[2].parse::<u64>().unwrap();
-            let end_address = address + size - 4;
-            let function_name = parts[3];
-            start_lookup.insert(address, function_name.to_string());
-            end_lookup.insert(end_address, function_name.to_string());
-            func_range_lookup.insert(function_name.to_string(), (address,end_address));
-        }
-    } else {
-        eprintln!("Error executing command: {}", str::from_utf8(&output.stderr).unwrap());
-    }
-    Ok(())
-}
-
 fn build_goblin_lookups(
     start_lookup: &mut HashMap<u64, String>,
     end_lookup: &mut HashMap<u64, String>,
@@ -173,7 +157,7 @@ fn build_goblin_lookups(
 
     for sym in &elf.syms {
         if sym.st_type() == STT_FUNC {
-            let name = elf.strtab.get(sym.st_name).unwrap_or(Ok("")).unwrap_or("");
+            let name = elf.strtab.get_at(sym.st_name).unwrap_or_default();
             let demangled_name = demangle(name);
             let size = sym.st_size;
             let start_address = sym.st_value;
@@ -195,7 +179,7 @@ fn increment_stack_counts(instruction_counts: &mut HashMap<String, usize>,
         *instruction_counts.entry(f.clone()).or_insert(0) += get_cycle_count(instruction).unwrap();
     }
     if let Some(f) = function_name {
-        focused_stack_counts(function_stack, filtered_stack_counts, &f, instruction)
+        focused_stack_counts(function_stack, filtered_stack_counts, f, instruction)
     }
 
 }
@@ -240,7 +224,7 @@ fn main() -> std::io::Result<()> {
 
 
     for (c,line) in file_content.lines().enumerate() {
-        if c % &update_interval == 0 {
+        if c % update_interval == 0 {
             pb.inc(update_interval as u64);
         }
         let mut parts = line.split("\t");
@@ -281,7 +265,7 @@ fn main() -> std::io::Result<()> {
         if let Some(f) = start_lookup.get(&pc) {
             increment_stack_counts(&mut instruction_counts, &function_stack, &mut filtered_stack_counts, &function_name,instruction);
             // jump to a new function (not recursive)
-            if !function_stack.contains(&f) {
+            if !function_stack.contains(f) {
                 function_stack.push(f.clone());
                 current_function_range = *func_range_lookup.get(f).unwrap();
             }
@@ -321,7 +305,7 @@ fn main() -> std::io::Result<()> {
 
     let mut raw_counts: Vec<(String, usize)> = instruction_counts
         .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
+        .map(|(key, value)| (key.clone(), *value))
         .collect();
     raw_counts.sort_by(|a, b| b.1.cmp(&a.1));
 
@@ -333,7 +317,7 @@ fn main() -> std::io::Result<()> {
 
     let mut raw_counts: Vec<(String, usize)> = counts_without_callgraph
         .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
+        .map(|(key, value)| (key.clone(), *value))
         .collect();
     raw_counts.sort_by(|a, b| b.1.cmp(&a.1));
     if !no_raw_counts {
