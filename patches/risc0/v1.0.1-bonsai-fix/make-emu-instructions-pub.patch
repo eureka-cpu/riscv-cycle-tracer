@@ -1,0 +1,22 @@
+diff --git a/risc0/circuit/rv32im/src/prove/emu/rv32im.rs b/risc0/circuit/rv32im/src/prove/emu/rv32im.rs
+index 67d00a89..1016d230 100644
+--- a/risc0/circuit/rv32im/src/prove/emu/rv32im.rs
++++ b/risc0/circuit/rv32im/src/prove/emu/rv32im.rs
+@@ -98,7 +98,7 @@ pub struct DecodedInstruction {
+ }
+ 
+ #[derive(Clone, Copy, Debug)]
+-enum InsnCategory {
++pub enum InsnCategory {
+     Compute,
+     Load,
+     Store,
+@@ -232,7 +232,7 @@ const fn insn(
+ type InstructionTable = [Instruction; 48];
+ type FastInstructionTable = [u8; 1 << 10];
+ 
+-const RV32IM_ISA: InstructionTable = [
++pub const RV32IM_ISA: InstructionTable = [
+     insn(InsnKind::INVALID, InsnCategory::Invalid, 0x00, 0x0, 0x00, 0),
+     insn(InsnKind::ADD, InsnCategory::Compute, 0x33, 0x0, 0x00, 1),
+     insn(InsnKind::SUB, InsnCategory::Compute, 0x33, 0x0, 0x20, 1),

@@ -18,6 +18,8 @@ use regex::Regex;
 use rustc_demangle::demangle;
 use textwrap::wrap;
 
+use risc0_circuit_rv32im::prove::emu::rv32im::{RV32IM_ISA as INSTRUCTIONS, InsnKind};
+
 // TODO: Put this in its own mod
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
